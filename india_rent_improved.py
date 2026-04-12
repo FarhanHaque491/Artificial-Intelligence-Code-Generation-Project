@@ -1,23 +1,3 @@
-"""
-india_rent_improved.py
-======================
-Cleaned-up, corrected, and improved version of the India House Rent analysis.
-
-Key changes over the original (see IMPROVEMENTS section at the bottom for details):
-  1.  parse_floor  – logs unrecognised values; no silent data loss
-  2.  remove_outliers_iqr – replaces the wrong iqr==0 skip with a percentile clip
-  3.  Schema validation at load time
-  4.  Log-transform of Rent target (log1p / expm1 round-trip)
-  5.  HistGradientBoostingRegressor replaces LinearRegression
-  6.  Rare-locality bucketing eliminates one-hot explosion
-  7.  5-fold cross-validation replaces a single 80/20 split
-  8.  Preprocessor instantiated per city (no shared-state risk)
-  9.  Deduplicated plot helper eliminates ~80 % repeated plotting code
- 10.  set_plot_style uses a context manager – no global rcParams mutation
- 11.  main() decomposed into named stages
- 12.  Type hints and docstrings throughout
- 13.  CONFIG block now covers every magic number / string
-"""
 
 from __future__ import annotations
 
