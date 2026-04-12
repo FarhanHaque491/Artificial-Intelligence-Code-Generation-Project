@@ -39,7 +39,7 @@ from sklearn.model_selection import KFold, cross_validate
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
 
-matplotlib.use("Agg")  # non-interactive backend – safe for scripts
+matplotlib.use("Agg")  
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,9 +48,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ============================================================
+
 # CONFIG  –  every magic value lives here
-# ============================================================
+
 DATA_PATH = "House_Rent_Dataset.csv"
 OUTPUT_DIR = "india_rent_outputs"
 
@@ -76,9 +76,9 @@ TOP_LOCALITY_COUNT: int = 12
 SAMPLE_PREDICTIONS_PER_CITY: int = 20
 
 
-# ============================================================
+
 # DATA LOADING & VALIDATION
-# ============================================================
+
 def load_and_validate(path: str) -> pd.DataFrame:
     """
     Load the CSV and raise early with a clear message if required columns
@@ -96,9 +96,9 @@ def load_and_validate(path: str) -> pd.DataFrame:
     return df
 
 
-# ============================================================
+
 # DATA CLEANING HELPERS
-# ============================================================
+
 _UNRECOGNISED_FLOORS: List[str] = []   # collected across all calls for reporting
 
 
@@ -206,25 +206,11 @@ def bucket_rare_localities(df: pd.DataFrame, min_count: int = RARE_LOCALITY_MIN_
     return df
 
 
-# ============================================================
+
 # MODELLING
-# ============================================================
+
 def build_preprocessor() -> ColumnTransformer:
-    """
-    Build a fresh ColumnTransformer instance.
-
-    Change vs original
-    ------------------
-    The original created ONE preprocessor and reused it across all city
-    pipelines.  sklearn does clone on fit, but sharing the object creates
-    confusing shared state.  Calling this function per city makes ownership
-    explicit and safe.
-
-    OrdinalEncoder replaces OneHotEncoder for the locality column: after
-    rare bucketing the cardinality is still moderate, and gradient-boosted
-    trees handle ordinal-encoded categoricals natively without the sparse-
-    matrix overhead of one-hot encoding.
-    """
+  
     numeric_features = ["Size", "Floor_Num", "Bathroom"]
     categorical_features = ["Area Type", "Area Locality", "Furnishing Status"]
 
@@ -255,24 +241,7 @@ def train_models(
     clean_df: pd.DataFrame,
     cities: List[str],
 ) -> Tuple[pd.DataFrame, Dict[str, dict]]:
-    """
-    Train one model per city and evaluate via k-fold cross-validation.
 
-    Changes vs original
-    -------------------
-    *  HistGradientBoostingRegressor replaces LinearRegression: captures
-       non-linear rent–size and locality interactions without explicit feature
-       engineering.
-    *  log1p / expm1 transform on Rent: the right-skewed distribution means a
-       linear model in log-space is much more accurate for typical rents; RMSE
-       on the log scale also penalises large errors proportionally.
-    *  5-fold CV instead of a single 80/20 split: metric estimates are more
-       stable and uncertainty is visible.
-    *  Fresh preprocessor per city to make data isolation explicit.
-    """
-    feature_cols = [
-        "Size", "Floor_Num", "Area Type", "Area Locality",
-        "Furnishing Status", "Bathroom",
     ]
     target_col = "Rent"
 
@@ -354,9 +323,9 @@ def train_models(
     return results_df, city_models
 
 
-# ============================================================
-# PLOTTING  –  shared helper eliminates duplicated boilerplate
-# ============================================================
+
+# PLOTTING  
+
 @contextlib.contextmanager
 def plot_style():
     """
@@ -390,15 +359,7 @@ def _line_plot(
     figsize: tuple | None = None,
     xtick_rotation: int = 0,
 ) -> None:
-    """
-    Shared helper that renders a per-city + India-average line chart.
 
-    Change vs original
-    ------------------
-    The six individual save_*_plot functions were ~80 % identical boilerplate.
-    Extracting this helper reduces the total plotting code by ~200 lines and
-    means any bug or style change only needs to be fixed in one place.
-    """
     with plot_style():
         fig, ax = plt.subplots(figsize=figsize)
 
@@ -459,17 +420,7 @@ def save_size_plot(clean_df: pd.DataFrame, cities: List[str], output_dir: str) -
 
 
 def save_floor_plot(clean_df: pd.DataFrame, cities: List[str], output_dir: str) -> None:
-    """
-    Change vs original
-    ------------------
-    The original `groupby(np.round(...))` placed rounded values as the index,
-    not as a column, so the subsequent `.rename(columns={"Floor_Num": "Floor"})`
-    was a no-op and `part["Floor"]` raised a KeyError at runtime.
-
-    Fixed by using a computed column instead of a groupby key:
-        df["Floor_Rounded"] = np.round(df["Floor_Num"])
-    so the column is always available by name.
-    """
+  
     floor_df = clean_df.dropna(subset=["Floor_Num", "Rent"]).copy()
 
     def _agg(df: pd.DataFrame) -> pd.DataFrame:
@@ -588,9 +539,9 @@ def save_all_graphs(clean_df: pd.DataFrame, cities: List[str], output_dir: str) 
     logger.info("All plots saved to '%s'.", output_dir)
 
 
-# ============================================================
+
 # MAIN  –  decomposed into named stages
-# ============================================================
+
 def load_data(path: str) -> pd.DataFrame:
     df = load_and_validate(path)
     df["Floor_Num"] = df["Floor"].apply(parse_floor)
@@ -653,48 +604,4 @@ if __name__ == "__main__":
     main()
 
 
-# ============================================================
-# IMPROVEMENTS SUMMARY
-# ============================================================
-# 1.  parse_floor  – silent NaN → log unrecognised values in _UNRECOGNISED_FLOORS,
-#     surfaced via report_floor_parse_issues().  Prevents invisible data loss.
-#
-# 2.  remove_outliers_iqr  – iqr==0 used to skip the column entirely, allowing
-#     real outliers through.  Replaced with a 1st–99th percentile fallback clip.
-#
-# 3.  Schema validation  – load_and_validate() checks all required columns exist
-#     before any processing and raises a clear ValueError if not.
-#
-# 4.  Log-transform of Rent  – log1p before fitting, expm1 after prediction.
-#     Addresses right-skew; model no longer over-optimises for expensive outliers.
-#
-# 5.  HistGradientBoostingRegressor  – replaces LinearRegression.  Handles
-#     non-linearity and feature interactions natively; no loss of performance on
-#     linearly separable data.
-#
-# 6.  Rare-locality bucketing  – bucket_rare_localities() replaces localities
-#     with fewer than RARE_LOCALITY_MIN_COUNT rows with "Other", eliminating the
-#     sparse one-hot explosion that cripples linear models.
-#
-# 7.  5-fold cross-validation  – cross_validate() replaces a single 80/20 split.
-#     CV R² / MAE estimates are more stable; variance across folds is visible.
-#
-# 8.  Per-city preprocessor  – build_preprocessor() called inside the city loop,
-#     not once outside it.  No shared mutable state between city pipelines.
-#
-# 9.  _line_plot helper  – six near-identical save_*_plot functions collapsed into
-#     one shared _line_plot + _categorical_line_plot pair.  ~200 fewer lines;
-#     single place to change style or fix bugs.
-#
-# 10. plot_style context manager  – replaces direct plt.rcParams mutation.
-#     Style is scoped to the context block; importing this module no longer has
-#     global side effects.
-#
-# 11. main() decomposed  – load_data / clean_data / train_models / save_outputs /
-#     save_all_graphs are now separate named functions, each independently testable.
-#
-# 12. Type hints and docstrings  – added throughout for IDE support and clarity.
-#
-# 13. CONFIG centralised  – RARE_LOCALITY_MIN_COUNT, N_CV_FOLDS, RANDOM_STATE,
-#     SIZE_QUANTILE_BINS, TOP_LOCALITY_COUNT, SAMPLE_PREDICTIONS_PER_CITY all
-#     live in the CONFIG block; no magic numbers scattered through the code.
+
